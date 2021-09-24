@@ -1,199 +1,204 @@
 import os
+import shlex
 from slack_bolt import App
-from slack_bolt.adapter.socket_mode import SocketModeHandler
-from decouple import config
+from pathlib import Path
+from dotenv import load_dotenv
+
 import re
 import datetime
 
 from database import Db
 
+env_path = Path('.') / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Initializes your app with  bot token and signing secret
 app = App(
-    token=config("SLACK_BOT_TOKEN"),
-    signing_secret=config("SLACK_SIGNING_SECRET")
+    token=os.environ.get("SLACK_BOT_TOKEN"),
+    signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
 
+answers = {}
 
-answers = {} # It stores username with its related questions and  answers
 
 db = Db()
 cursor = db.connect()
 
 # Listens to incoming messages that contain "hello"
 
+
 @app.message("hello")
 def message_hello(message, say):
     # say() sends a message to the channel where the event was triggered
-	print("Hello world")
-	say(
+    say(
         blocks=[
             {
                 "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "Will you be working from home, today?"
-                        },
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Will you be working from home, today?"
+                },
                 "accessory": {
-                            "type": "radio_buttons",
-                            "options": [
-                                    {
-                                        "text": {
-                                            "type": "plain_text",
-                                            "text": "No",
-                                            "emoji": True
-                                        },
-                                        "value": "0"
-                                    },
-                                {
-                                        "text": {
-                                            "type": "plain_text",
-                                            "text": "Yes",
-                                            "emoji": True
-                                        },
-                                        "value": "1"
-                                },
-                                {
-                                        "text": {
-                                            "type": "plain_text",
-                                            "text": "Maybe",
-                                            "emoji": True
-                                        },
-                                        "value": "2"
-                                }
-                            ],
-                            "action_id": "radio_buttons-action"
+                    "type": "radio_buttons",
+                    "action_id": "radio_buttons-action",
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "No",
+                                "emoji": True
+                            },
+                            "value": "0"
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Yes",
+                                "emoji": True
+                            },
+                            "value": "1"
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Maybe",
+                                "emoji": True
+                            },
+                            "value": "2"
                         }
+                    ],
+                }
             },
             {
                 "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "Are you Fine today?"
-                        },
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Are you Fine today?"
+                },
                 "accessory": {
-                            "type": "radio_buttons",
-                            "options": [
-                                    {
-                                        "text": {
-                                            "type": "plain_text",
-                                            "text": "No",
-                                            "emoji": True
-                                        },
-                                        "value": "0"
-                                    },
-                                {
-                                        "text": {
-                                            "type": "plain_text",
-                                            "text": "Yes",
-                                            "emoji": True
-                                        },
-                                        "value": "1"
-                                },
-                                {
-                                        "text": {
-                                            "type": "plain_text",
-                                            "text": "Maybe",
-                                            "emoji": True
-                                        },
-                                        "value": "2"
-                                }
-                            ],
-                            "action_id": "radio_buttons-fine"
+                    "type": "radio_buttons",
+                    "action_id": "radio_buttons-fine",
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "No",
+                                "emoji": True
+                            },
+                            "value": "0"
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Yes",
+                                "emoji": True
+                            },
+                            "value": "1"
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Maybe",
+                                "emoji": True
+                            },
+                            "value": "2"
                         }
+                    ],
+                }
             },
             {
                 "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                        "type": "plain_text",
-                                        "text": "Save My Response"
-                                },
-                                "action_id": "save_response"
-                            }
-                        ]
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                                "type": "plain_text",
+                                "text": "Save My Response"
+                        },
+                        "action_id": "save_response"
+                    }
+                ]
             }
         ],
         text=f"Save your response <@{message['user']}>!"
-
     )
 
 
-def convert_stored_response_to_tuple_list(answers, for_leave=False):
-    if for_leave:
-        for key, val in answers.items():
-            arr=[key]
-            for val in val.items():
-                arr.append(val[1])
-            return arr
-    else:
-        for key, val in answers.items():
-            arr = []
-            for val in val.items():
-                formatted = (key, )
-                arr.append(formatted + val)
-            return arr
+def convert_stored_response_to_tuple_list(answers):
+    for k in answers:
+        user_tuple = (k,)
+        survey_tuple_array = answers[k].items()
+
+        formatted = []
+
+        for each in survey_tuple_array:
+            formatted.append(user_tuple + each)
+        return formatted
 
 
 @app.action("save_response")
-def save_survey_response(ack, action, respond, say):
+def save_survey_response(ack, action, respond):
     ack()
 
     list = convert_stored_response_to_tuple_list(answers)
 
     print("list", list)
-    if list is None or len(list)<2:
-        # say("hello")
-        respond(f"Please select the suitable answers")
-    else:
-        query = """INSERT INTO daily_survey(user_id,question_id,answer)
-                VALUES(%s,%s,%s) RETURNING id;"""
 
-        x = cursor.executemany(query, list)
-        db.commit()
-        print("many execute", x)
-        respond(f"Survey Saved")
+    print(respond)
 
+    query = """INSERT INTO daily_survey(user_id,question_id,answer)
+            VALUES(%s,%s,%s) RETURNING id;"""
+
+    x = cursor.executemany(query, list)
+    db.commit()
+    print("many execute", x)
+    respond(f"Survey Saved")
 
 
-@app.action(re.compile('radio_buttons-(fine|action)'))
+@app.event("message")
+def on_message(ack):
+    ack()
+
+
+@app.action("radio_buttons-action")
 def store_radio_click(ack, action, client, body):
     ack()
-    # print(f'body {body}')
 
-    # print(f'body {body.get("message").get("blocks")}')
-
-    for i in body.get("message").get("blocks"):
-        print(f'section: {i}')
-    print(f'action {action}')
-    print("Inside response handling section")
     action_block_id = action.get('block_id')
-    for i in body.get("message").get("blocks"):
-        if i.get('block_id') == action_block_id:
-            question = i.get('text').get('text')
-
-    print(f'action_block_id {action_block_id}')
     selected_option = action.get('selected_option')
-    print(f'selected_option {selected_option}')
-    value = selected_option.get('text').get('text')
-    print(f'value {value}')
+
+    value = selected_option.get('value')
 
     user = body.get('user')
-    print(f'user {user}')
-    user_id = user.get('name')
-    print(f'user_id {user_id}')
+    user_id = user.get('id')
+
+    if user_id in answers:
+        answers[user_id][action_block_id] = value
+    else:
+        answers[user_id] = {}
+        answers[user_id][action_block_id] = value
+
+
+@app.action("radio_buttons-fine")
+def store_radio_click(ack, action, client, body):
+    ack()
+
+    action_block_id = action.get('block_id')
+    selected_option = action.get('selected_option')
+
+    value = selected_option.get('value')
+
+    user = body.get('user')
+    user_id = user.get('id')
 
     # answers[user_id][action_block_id] = value
 
     if user_id in answers:
-        answers[user_id][question] = value
+        answers[user_id][action_block_id] = value
     else:
         answers[user_id] = {}
-        answers[user_id][question] = value
-
-    print(f'answers: {answers}')
+        answers[user_id][action_block_id] = value
+    print(answers)
 
 
 """
@@ -203,86 +208,95 @@ Command related text
 """
 BLOCK_ID_ABSENT_START = "absent_start_date"
 BLOCK_ID_ABSENT_END = "absent_end_date"
+BLOCK_ID_USER_TEXT = "absent_text"
 
-command_out_response = {}
+command_absent_answers = {}
 
 
-def command_by_day_handler(days, user_id):
+def command_by_day_handler(command):
     """
     Returns start and end date format
     Args:
       days = str, Days passed as a parameter in command
       user_id = str, Requested user id
     """
-    print(f'days: {days}')
-    days = int(days)
-    start_date = datetime.date.today()
-    end_date = start_date + datetime.timedelta(days=days)
+    mssg = "You have entered incorrect command. Try: `/out` to add manually."
+    user_id = command.get("user_id")
 
-    # start_format = start_date.strftime("%Y-%m-%d")
-    # end_format = end_date.strftime("%Y-%m-%d")
+    command_args = shlex.split(command.get("text")) 
 
-    command_out_response[user_id] = {}
-    command_out_response[user_id][BLOCK_ID_ABSENT_START] = start_date
-    command_out_response[user_id][BLOCK_ID_ABSENT_END] = end_date
+    try:
+        if len(command_args) > 3:
+            raise IndexError()
+    
+        days = command_args[1]
+        absent_text = command_args[2]
 
-    return f"You will be on leave from: *{start_date}* and available from: *{end_date}*. Save?"
+        days = int(days)
+        start_date = datetime.date.today()
+        end_date = start_date + datetime.timedelta(days=days)
 
+        start_format = start_date.strftime("%Y-%m-%d")
+        end_format = end_date.strftime("%Y-%m-%d")
 
-COMMAND_OUT_ARGS = {
-    '-d': command_by_day_handler
+        errors = validate_absent_data(start_format, end_format, absent_text)
+
+        if len(errors) > 0:
+            mssg = "Please correct your values:\n"
+            error_list = [''.join(value) for key, value in errors.items()]
+            new_mssg = mssg + "> {}".format("\n".join(error_list))
+            return new_mssg
+
+        command_absent_answers[user_id] = {}
+        command_absent_answers[user_id][BLOCK_ID_ABSENT_START] = start_format
+        command_absent_answers[user_id][BLOCK_ID_ABSENT_END] = end_format
+        command_absent_answers[user_id][BLOCK_ID_USER_TEXT] = absent_text
+
+        mssg = f"You will be on leave from: *{start_format}* and available from: *{end_format}*. Save?"
+        return mssg, True
+
+    except IndexError:
+        mssg = f"You have to pass two values: *day* and *leave_text*. Example: `/out -d 1 \"I am travelling.\"`"
+    except ValueError as ve:
+        mssg = f"Days must be integer."
+
+    return mssg, False
+
+"""
+Types of commands available
+"""
+COMMAND_ABSENT_ARGS = {
+    '-d': command_by_day_handler,
 }
 
-
-@app.command("/out")
-def command_absent(ack, say, command):
-    ack()
-    command_text = command.get("text")
-
-    if command_text:
-        mssg = "You have entered incorrect command. Try: `/out` to add manually."
-        command_args = command_text.split(" ")
-        command_key = command_args[0]
-
-        try:
-            command_value = command_args[1]
-
-            user_id = command.get('user_id')
-
-            mssg = COMMAND_OUT_ARGS[command_key](
-                command_value, user_id=user_id)
-
-        finally:
-            # except (KeyError, IndexError, ValueError):
-            say(
-                blocks=[
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": mssg
-                        },
-                    },
-                ]
-            )
-    else:
-
-        today_date = datetime.datetime.today()
-        tomorrow_date = today_date + datetime.timedelta(days=1)
-        say(
-            blocks=[
+def get_command_absent_view(start_date=None, end_date=None):
+    """
+    Return command absent view dictionary.
+    Args:
+        start_date (datetime): datetime of starting leave (Default: Today)
+        start_date (datetime): datetime of coming from leave (Default: Tomorrow)
+    """
+    start_date = start_date or datetime.date.today()
+    end_date = end_date or (start_date + datetime.timedelta(days=1))
+    
+    view = {
+            "type": "modal",
+            "callback_id": "absent_view",
+            "title": {"type": "plain_text", "text": "Leave Form"},
+            "submit": {"type": "plain_text", "text": "Submit"},
+            "blocks": [
                 {
                     "type": "input",
                     "block_id": BLOCK_ID_ABSENT_START,
                     "element": {
                         "type": "datepicker",
-                        # "initial_date": today_date.strftime("%Y-%m-%d"),
+                        "initial_date": start_date.strftime("%Y-%m-%d"),
                         "placeholder": {
                             "type": "plain_text",
                             "text": "Select a date",
                             "emoji": True
                         },
-                        "action_id": "datepicker_out-start"
+                        "action_id": "absent_date-start"
                     },
                     "label": {
                         "type": "plain_text",
@@ -294,93 +308,196 @@ def command_absent(ack, say, command):
                     "block_id": BLOCK_ID_ABSENT_END,
                     "element": {
                         "type": "datepicker",
-                        # "initial_date": tomorrow_date.strftime("%Y-%m-%d"),
+                        "initial_date": end_date.strftime("%Y-%m-%d"),
                         "placeholder": {
                             "type": "plain_text",
                             "text": "Select a date",
                             "emoji": True
                         },
-                        "action_id": "datepicker_out-end"
+                        "action_id": "absent_date-end"
                     },
                     "label": {
                         "type": "plain_text",
                         "text": "Pickup the date you will be coming."
                     }
                 },
-            ],
-        )
-    say(
-        blocks=[
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Save My Response"
-                        },
-                        "action_id": "datepicker_out-save"
+                {
+                    "type": "input",
+                    # "optional": True,
+                    "block_id": BLOCK_ID_USER_TEXT,
+                    "label": {
+                        "type": "plain_text", 
+                        "text": "What is the reason for leave?"
                     },
-                ],
-            },
-        ]
-    )
+                    "element": {
+                        "type": "plain_text_input",
+                        "action_id": "absent_date-text",
+                        "multiline": True
+                    }
+                },
+            ],
+        }
+    return view
 
 
-@app.action("datepicker_out-save")
-def save_leave_response(ack, action, respond):
-    global command_out_response
-    ack()
-    print("inside save leave statement")
+def validate_absent_data(start_date, end_date, text=None):
+    """
+    Validates the absent data. Returns dictionary of errors
+    Args:
+        start_date (str): date of starting leave in "%Y-%m-%d" format
+        end_date (str): date of coming after leave in "%Y-%m-%d" format
+        text (str): Reason for leave 
+    """
+    errors = {}
+    start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+    end_date = datetime.datetime.strptime(end_date, "%Y-%m-%d")
 
-    print(f'command_out_response {command_out_response}')
-    list = convert_stored_response_to_tuple_list(command_out_response, for_leave=True)
-    command_out_response = {}
-    today_date = datetime.date.today()
-    print("list", list)
+    if start_date.date() < datetime.date.today():
+        errors[BLOCK_ID_ABSENT_START] = "You can't take date before today"
 
-    if list !=None and len(list) ==3:
-        leave_start_date = list[1]
-        leave_end_date = list[2]
-
-
-    if list is None:
-        respond("Please provide date value in input filed")
+    if end_date.date() <= start_date.date():
+        errors[BLOCK_ID_ABSENT_END] = "You can't take date before starting date"
     
-    elif len(list) !=3:
-        respond("Please provide both leave start and end date!!!")
-    elif leave_start_date < today_date or leave_end_date < today_date or leave_start_date==leave_end_date:
-        respond("You have entered invalid date. Please enter valid date and try agian")
+    return errors
 
-    else:
-        query = """INSERT INTO employee_leave_table(user_id,leave_start_date,leave_end_date)
-                VALUES(%s,%s,%s) RETURNING id;"""
+def save_absent(client, user_id, logger):
+    """
+    Saves the absent record in the database. Shows error message or success message
+    Args:
+        client:- Slack bolt client 
+        user_id:- User id
+        logger:- Slack bolt logger
+    """
+    msg = ""
+    try:
+        list = convert_stored_response_to_tuple_list(command_absent_answers)
+        print("list", list)
+        # Save to db
+        print(command_absent_answers)
+        msg = f"Absent record Saved."
 
-        x = cursor.execute(query, list)
-        db.commit()
-        print("many execute", x)
-        respond(f"Absent date has been sucessfully  Saved.")
+    except Exception as e:
+        msg = "There was an error."
+
+    try:
+        client.chat_postMessage(channel=user_id, text=msg)
+    except e:
+        logger.exception(f"Failed to post a message {e}")
 
 
-@app.action(re.compile("datepicker_out-(start|end)"))
-def store_leave_start(ack, action, client, body):
+"""
+--------------------
+Below are all slack bolt listeners
+--------------------
+"""
+
+@app.command("/out")
+def command_absent(ack, say, command, client, body):
     ack()
-    print("inside datepicker start or end")
-    print(f'body {body}')
-    print(f'action {action}')
-    action_block_id = action.get('block_id')
-    selected_date = action.get('selected_date')
-    selected_date = datetime.datetime.strptime(selected_date, "%Y-%m-%d").date()
-    print(f'selected_date: {selected_date}')
+    command_text = command.get("text")
 
+    if command_text:
+        mssg = "You have entered incorrect command. Try: `/out` to add manually."
+        command_args = shlex.split(command_text) 
+        command_key = command_args[0]
+
+        is_valid = False
+
+        try:
+            func = COMMAND_ABSENT_ARGS[command_key]
+            mssg, is_valid = func(command)
+
+            if is_valid:
+                say(
+                    blocks=[
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": mssg
+                            },
+                        },
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "Save My Response"
+                                    },
+                                    "action_id": "absent_date-save"
+                                },
+                            ],
+                        },
+                    ]
+                )
+
+        except KeyError:
+            available_texts = ", ".join([''.join(key) for key, value in COMMAND_ABSENT_ARGS.items()])
+            mssg = f"Incorrect command parameter: `{command_text}`, available are: `{available_texts}`"
+
+        if not is_valid:
+            say(mssg)
+    else:
+        client.views_open(
+            trigger_id=body["trigger_id"],
+            view=get_command_absent_view(),
+        )
+
+
+@app.action("absent_date-save")
+def save_leave_response(ack, body, client, logger):
+    ack()
     user_id = body.get('user').get('id')
 
-    if user_id in command_out_response:
-        command_out_response[user_id][action_block_id] = selected_date
-    else:
-        command_out_response[user_id] = {}
-        command_out_response[user_id][action_block_id] = selected_date
+    save_absent(client=client, user_id=user_id, logger=logger)
+
+
+@app.view("absent_view")
+def handle_submission(ack, body, client, view, logger):
+    print("--------------")
+
+    user_id = body.get("user").get("id")
+
+    data = view["state"]["values"]
+
+    absent_start_date = data[BLOCK_ID_ABSENT_START]["absent_date-start"]["selected_date"]
+    absent_end_date = data[BLOCK_ID_ABSENT_END]["absent_date-end"]["selected_date"]
+    absent_text = data[BLOCK_ID_USER_TEXT]["absent_date-text"]["value"]
+
+    errors = validate_absent_data(absent_start_date, absent_end_date, absent_text)
+
+    if len(errors) > 0:
+        ack(response_action="errors", errors=errors)
+        return
+
+    ack()
+
+    command_absent_answers[user_id] = {}
+    command_absent_answers[user_id][BLOCK_ID_ABSENT_START] = absent_start_date
+    command_absent_answers[user_id][BLOCK_ID_ABSENT_END] = absent_end_date
+    command_absent_answers[user_id][BLOCK_ID_USER_TEXT] = absent_text
+
+    save_absent(client=client, user_id=user_id, logger=logger)
+    
+
+# @app.action(re.compile("absent_date-(start|end)"))
+# def command_store_date(ack, body, action, client):
+#     ack()
+
+#     action_block_id = action.get('block_id')
+#     selected_date = action.get('selected_date')
+
+#     user_id = body.get('user').get('id')
+
+#     if user_id in command_absent_answers:
+#         command_absent_answers[user_id][action_block_id] = selected_date
+#     else:
+#         command_absent_answers[user_id] = {}
+#         command_absent_answers[user_id][action_block_id] = selected_date
+
+
 
 
 
