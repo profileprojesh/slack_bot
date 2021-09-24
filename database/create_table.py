@@ -34,7 +34,8 @@ def create_leave_table():
             id SERIAL PRIMARY KEY,
             user_id VARCHAR(100) NOT NULL,
             leave_start_date DATE NOT NULL,
-            leave_end_date DATE NOT NULL
+            leave_end_date DATE NOT NULL,
+            reason_text TEXT
         );
         """
 
