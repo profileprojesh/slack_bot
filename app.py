@@ -124,16 +124,20 @@ def message_hello(message, say):
     )
 
 
-def convert_stored_response_to_tuple_list(answers):
-    for k in answers:
-        user_tuple = (k,)
-        survey_tuple_array = answers[k].items()
-
-        formatted = []
-
-        for each in survey_tuple_array:
-            formatted.append(user_tuple + each)
-        return formatted
+def convert_stored_response_to_tuple_list(answers, for_leave=False):
+    if for_leave:
+        for key, val in answers.items():
+            arr=[key]
+            for val in val.items():
+                arr.append(val[1])
+            return arr
+    else:
+        for key, val in answers.items():
+            arr = []
+            for val in val.items():
+                formatted = (key, )
+                arr.append(formatted + val)
+            return arr
 
 
 @app.action("save_response")
@@ -143,62 +147,52 @@ def save_survey_response(ack, action, respond):
     list = convert_stored_response_to_tuple_list(answers)
 
     print("list", list)
+    if list is None or len(list)<2:
+        respond(f"Please select the suitable answers")
+    else:
+        query = """INSERT INTO daily_survey(user_id,question_id,answer)
+                VALUES(%s,%s,%s) RETURNING id;"""
 
-    print(respond)
-
-    query = """INSERT INTO daily_survey(user_id,question_id,answer)
-            VALUES(%s,%s,%s) RETURNING id;"""
-
-    x = cursor.executemany(query, list)
-    db.commit()
-    print("many execute", x)
-    respond(f"Survey Saved")
-
-
-@app.event("message")
-def on_message(ack):
-    ack()
+        x = cursor.executemany(query, list)
+        db.commit()
+        print("many execute", x)
+        respond(f"Survey Saved")
 
 
-@app.action("radio_buttons-action")
+@app.action(re.compile('radio_buttons-(fine|action)'))
 def store_radio_click(ack, action, client, body):
     ack()
 
-    action_block_id = action.get('block_id')
-    selected_option = action.get('selected_option')
+    for i in body.get("message").get("blocks"):
+        print(f'section: {i}')
 
-    value = selected_option.get('value')
-
-    user = body.get('user')
-    user_id = user.get('id')
-
-    if user_id in answers:
-        answers[user_id][action_block_id] = value
-    else:
-        answers[user_id] = {}
-        answers[user_id][action_block_id] = value
-
-
-@app.action("radio_buttons-fine")
-def store_radio_click(ack, action, client, body):
-    ack()
+    print(f'action {action}')
+    print("Inside response handling section")
 
     action_block_id = action.get('block_id')
-    selected_option = action.get('selected_option')
+    for i in body.get("message").get("blocks"):
+        if i.get('block_id') == action_block_id:
+            question = i.get('text').get('text')
 
-    value = selected_option.get('value')
+    print(f'action_block_id {action_block_id}')
+    selected_option = action.get('selected_option')
+    print(f'selected_option {selected_option}')
+    value = selected_option.get('text').get('text')
+    print(f'value {value}')
 
     user = body.get('user')
-    user_id = user.get('id')
 
-    # answers[user_id][action_block_id] = value
+    print(f'user {user}')
+    user_id = user.get('name')
+    print(f'user_id {user_id}')
 
     if user_id in answers:
-        answers[user_id][action_block_id] = value
+        answers[user_id][question] = value
     else:
         answers[user_id] = {}
-        answers[user_id][action_block_id] = value
-    print(answers)
+        answers[user_id][question] = value
+
+    print(f'answers: {answers}')
 
 
 """
@@ -217,11 +211,10 @@ def command_by_day_handler(command):
     """
     Returns start and end date format
     Args:
-      days = str, Days passed as a parameter in command
-      user_id = str, Requested user id
+      command: Slack bolt commant argument
     """
     mssg = "You have entered incorrect command. Try: `/out` to add manually."
-    user_id = command.get("user_id")
+    user_name = command.get("user_name")
 
     command_args = shlex.split(command.get("text")) 
 
@@ -230,7 +223,7 @@ def command_by_day_handler(command):
             raise IndexError()
     
         days = command_args[1]
-        absent_text = command_args[2]
+        absent_text = len(command_args) == 3 and command_args[2] or None
 
         days = int(days)
         start_date = datetime.date.today()
@@ -247,16 +240,16 @@ def command_by_day_handler(command):
             new_mssg = mssg + "> {}".format("\n".join(error_list))
             return new_mssg
 
-        command_absent_answers[user_id] = {}
-        command_absent_answers[user_id][BLOCK_ID_ABSENT_START] = start_format
-        command_absent_answers[user_id][BLOCK_ID_ABSENT_END] = end_format
-        command_absent_answers[user_id][BLOCK_ID_USER_TEXT] = absent_text
+        command_absent_answers[user_name] = {}
+        command_absent_answers[user_name][BLOCK_ID_ABSENT_START] = start_format
+        command_absent_answers[user_name][BLOCK_ID_ABSENT_END] = end_format
+        command_absent_answers[user_name][BLOCK_ID_USER_TEXT] = absent_text
 
         mssg = f"You will be on leave from: *{start_format}* and available from: *{end_format}*. Save?"
         return mssg, True
 
     except IndexError:
-        mssg = f"You have to pass two values: *day* and *leave_text*. Example: `/out -d 1 \"I am travelling.\"`"
+        mssg = f"You can pass two values: *day* and *leave_text*. Example: `/out -d 1 \"I am travelling.\"`"
     except ValueError as ve:
         mssg = f"Days must be integer."
 
@@ -323,7 +316,7 @@ def get_command_absent_view(start_date=None, end_date=None):
                 },
                 {
                     "type": "input",
-                    # "optional": True,
+                    "optional": True,
                     "block_id": BLOCK_ID_USER_TEXT,
                     "label": {
                         "type": "plain_text", 
@@ -370,18 +363,23 @@ def save_absent(client, user_id, logger):
     """
     msg = ""
     try:
-        list = convert_stored_response_to_tuple_list(command_absent_answers)
+        list = convert_stored_response_to_tuple_list(command_absent_answers, True)
         print("list", list)
-        # Save to db
+        query = """INSERT INTO employee_leave_table(user_id,leave_start_date,leave_end_date,reason_text)
+                VALUES(%s,%s,%s,%s) RETURNING id;"""
+
+        cursor.execute(query, list)
+        db.commit()
         print(command_absent_answers)
         msg = f"Absent record Saved."
 
     except Exception as e:
+        print(e)
         msg = "There was an error."
 
     try:
         client.chat_postMessage(channel=user_id, text=msg)
-    except e:
+    except Exception as e:
         logger.exception(f"Failed to post a message {e}")
 
 
@@ -394,6 +392,7 @@ Below are all slack bolt listeners
 @app.command("/out")
 def command_absent(ack, say, command, client, body):
     ack()
+    print(command)
     command_text = command.get("text")
 
     if command_text:
@@ -449,7 +448,7 @@ def command_absent(ack, say, command, client, body):
 @app.action("absent_date-save")
 def save_leave_response(ack, body, client, logger):
     ack()
-    user_id = body.get('user').get('id')
+    user_id = body.get("user").get("id")
 
     save_absent(client=client, user_id=user_id, logger=logger)
 
@@ -459,6 +458,7 @@ def handle_submission(ack, body, client, view, logger):
     print("--------------")
 
     user_id = body.get("user").get("id")
+    user_name = body.get("user").get("name")
 
     data = view["state"]["values"]
 
@@ -474,33 +474,13 @@ def handle_submission(ack, body, client, view, logger):
 
     ack()
 
-    command_absent_answers[user_id] = {}
-    command_absent_answers[user_id][BLOCK_ID_ABSENT_START] = absent_start_date
-    command_absent_answers[user_id][BLOCK_ID_ABSENT_END] = absent_end_date
-    command_absent_answers[user_id][BLOCK_ID_USER_TEXT] = absent_text
+    command_absent_answers[user_name] = {}
+    command_absent_answers[user_name][BLOCK_ID_ABSENT_START] = absent_start_date
+    command_absent_answers[user_name][BLOCK_ID_ABSENT_END] = absent_end_date
+    command_absent_answers[user_name][BLOCK_ID_USER_TEXT] = absent_text
 
     save_absent(client=client, user_id=user_id, logger=logger)
-    
-
-# @app.action(re.compile("absent_date-(start|end)"))
-# def command_store_date(ack, body, action, client):
-#     ack()
-
-#     action_block_id = action.get('block_id')
-#     selected_date = action.get('selected_date')
-
-#     user_id = body.get('user').get('id')
-
-#     if user_id in command_absent_answers:
-#         command_absent_answers[user_id][action_block_id] = selected_date
-#     else:
-#         command_absent_answers[user_id] = {}
-#         command_absent_answers[user_id][action_block_id] = selected_date
 
 
-
-
-
-# Start your app
 if __name__ == "__main__":
     app.start(port=int(os.environ.get("PORT", 5000)))

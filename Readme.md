@@ -1,3 +1,16 @@
-used venv
+# Installation
+```
+# venv
+python -m venv .venv
 
-pip3 install -r requirements.txt
+# package
+pip install -r requirements.txt
+```
+
+# Feature
+Events till now:
+* `hello` :- Message that will ask for general question
+* `/out`:- Command to work with recording absent data. Commands available:
+    * `/out` - > Give modal to register absent details
+    * `/out -d n` *where n is integer* ->  Record details *n* day from today, reason will be *null*
+    * `/out -d n "I am travelling"` *where n is integer* -> Record details *n* day from today, reason for *leave*
