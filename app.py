@@ -236,9 +236,8 @@ def command_by_day_handler(command):
 
         if len(errors) > 0:
             mssg = "Please correct your values:\n"
-            error_list = [''.join(value) for key, value in errors.items()]
-            new_mssg = mssg + "> {}".format("\n".join(error_list))
-            return new_mssg
+            mssg += "\n".join(['> ' + value for key, value in errors.items()])
+            return mssg, False
 
         command_absent_answers[user_name] = {}
         command_absent_answers[user_name][BLOCK_ID_ABSENT_START] = start_format
@@ -454,7 +453,7 @@ def save_leave_response(ack, body, client, logger):
 
 
 @app.view("absent_view")
-def handle_submission(ack, body, client, view, logger):
+def handle_absent_modal_submission(ack, body, client, view, logger):
     print("--------------")
 
     user_id = body.get("user").get("id")
@@ -480,6 +479,24 @@ def handle_submission(ack, body, client, view, logger):
     command_absent_answers[user_name][BLOCK_ID_USER_TEXT] = absent_text
 
     save_absent(client=client, user_id=user_id, logger=logger)
+
+
+@app.command("/out-today")
+def command_absent_today(ack, say):
+    ack()
+    say_mssg = "Members who are on leave:\n"
+    cursor.execute("""SELECT DISTINCT user_id 
+                        FROM employee_leave_table 
+                        WHERE leave_start_date = %s;
+                    """, (datetime.date.today(), ))
+    users_tuple_list = cursor.fetchall()
+
+    if len(users_tuple_list) == 0:
+        say_mssg = "There is no members on leave today :relaxed:"
+    else:
+        say_mssg += "\n".join([ f"{ind+1}. " + user_id[0] for ind, user_id in enumerate(users_tuple_list)])
+
+    say(say_mssg)
 
 
 if __name__ == "__main__":
