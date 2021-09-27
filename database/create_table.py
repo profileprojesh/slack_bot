@@ -35,10 +35,10 @@ def create_leave_table():
             user_id VARCHAR(100) NOT NULL,
             leave_start_date DATE NOT NULL,
             leave_end_date DATE NOT NULL,
-            reason_text TEXT
+            reason_text TEXT,
+            UNIQUE (user_id, leave_start_date)
         );
         """
-
         
     try:
         y=cur.execute(query)

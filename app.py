@@ -364,8 +364,15 @@ def save_absent(client, user_id, logger):
     try:
         list = convert_stored_response_to_tuple_list(command_absent_answers, True)
         print("list", list)
+        # query = """INSERT INTO employee_leave_table(user_id,leave_start_date,leave_end_date,reason_text)
+        #         VALUES(%s,%s,%s,%s) RETURNING id;"""
+
         query = """INSERT INTO employee_leave_table(user_id,leave_start_date,leave_end_date,reason_text)
-                VALUES(%s,%s,%s,%s) RETURNING id;"""
+                VALUES(%s,%s,%s,%s)
+                ON CONFLICT ON CONSTRAINT employee_leave_table_user_id_leave_start_date_key 
+                DO UPDATE SET
+                leave_end_date = EXCLUDED.leave_end_date,
+                reason_text = EXCLUDED.reason_text RETURNING id;"""
 
         cursor.execute(query, list)
         db.commit()
