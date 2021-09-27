@@ -254,12 +254,55 @@ def command_by_day_handler(command):
 
     return mssg, False
 
+def get_absent_by_month_handler(command):
+    response = {
+        "message": "You have entered incorrect command. Try: `/out-month` to get absent members this month.",
+        "value": None,
+        "is_weekend_included": None,
+    }
+
+    command_args = shlex.split(command.get("text")) 
+
+    try:
+        if len(command_args) > 3:
+            raise IndexError()
+    
+        month_number = command_args[1]
+        is_weekend_included = len(command_args) == 3 and command_args[2] or "true"
+
+        month_number = int(month_number)
+
+        if month_number not in range(1,13):
+            raise Exception("Month number must be between 1 and 12.")
+
+        if is_weekend_included not in ["true", "false"]:
+            raise Exception("Last value can either be *true* or *false*.")
+
+        response["value"] = month_number
+        response["message"] = "success"
+        response["is_weekend_included"] = is_weekend_included == "true"
+        return response, True
+
+    except IndexError:
+        mssg = f"You can pass *month number* and *include weekends*. Example: `/out-month -m 1 false`"
+    except ValueError as ve:
+        mssg = f"Month number must be integer."
+    except Exception as e:
+        mssg = str(e)
+
+    response["message"] = mssg
+    return response, False
+
 """
 Types of commands available
 """
 COMMAND_ABSENT_ARGS = {
     '-d': command_by_day_handler,
 }
+COMMAND_ABSENT_BY_MONTH_ARGS = {
+    '-m': get_absent_by_month_handler,
+}
+
 
 def get_command_absent_view(start_date=None, end_date=None):
     """
@@ -504,6 +547,102 @@ def command_absent_today(ack, say):
         say_mssg += "\n".join([ f"{ind+1}. " + user_id[0] for ind, user_id in enumerate(users_tuple_list)])
 
     say(say_mssg)
+
+
+@app.command("/out-month")
+def command_absent_month(ack, say, command):
+    ack()
+
+    command_text = command.get("text")
+    month_number = datetime.datetime.now().month
+    is_weekend_included = True
+
+    if command_text:
+        mssg = "You have entered incorrect command. Try: `/out-month` to get absent members this month."
+        command_args = shlex.split(command_text) 
+        command_key = command_args[0]
+
+        is_valid = False
+
+        try:
+            func = COMMAND_ABSENT_BY_MONTH_ARGS[command_key]
+            data, is_valid = func(command)
+
+            mssg = data.get("message")
+
+            if is_valid:
+                month_number = data.get("value")
+                is_weekend_included = data.get("is_weekend_included")
+
+        except KeyError:
+            available_texts = ", ".join([''.join(key) for key, value in COMMAND_ABSENT_BY_MONTH_ARGS.items()])
+            mssg = f"Incorrect command parameter: `{command_text}`, available are: `{available_texts}`"
+            
+        if not is_valid:
+            say(mssg)
+            return
+
+    if is_weekend_included:
+        cursor.execute('''SELECT du.user_id, SUM(du.leave_days) as total
+            FROM (
+                SELECT user_id, leave_start_date, (leave_end_date::date - leave_start_date::date) as leave_days
+                FROM employee_leave_table
+            ) du
+            WHERE EXTRACT(MONTH FROM leave_start_date) = %s
+            GROUP BY du.user_id
+            ORDER BY SUM(du.leave_days) DESC;
+            ''', (month_number,))
+    else:
+        '''
+        Ref: https://dba.stackexchange.com/a/55998
+        '''
+
+        cursor.execute('''SELECT user_id, COUNT(*)
+            FROM employee_leave_table, generate_series(leave_start_date::timestamp
+                , leave_end_date::timestamp - interval '1 day'
+                , interval  '1 day') the_day
+            WHERE EXTRACT('ISODOW' FROM the_day) < 6 
+            AND EXTRACT('MONTH' FROM leave_start_date) = %s
+            GROUP BY user_id
+            ORDER BY COUNT(*) DESC;
+            ''', (month_number,))
+
+    users_tuple_list = cursor.fetchall()
+
+    if len(users_tuple_list) == 0:
+        say("There is no members on leave in the month :relaxed:")
+    else:
+        mssg = {
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "text": "List of members with absent count:",
+                        "type": "mrkdwn"
+                    },
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": "*Name*"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "*Total*"
+                        },
+                    ]
+                }
+            ]
+        }
+        for user in users_tuple_list:
+            for i in range(2):
+                col_dict = {
+                    "type": "plain_text"
+                }
+                col_dict["text"] = str(user[i])
+                mssg["blocks"][0]["fields"].append(col_dict)
+
+        say(**mssg)
+
 
 
 if __name__ == "__main__":
