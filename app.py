@@ -596,7 +596,6 @@ def command_absent_month(ack, say, command):
         '''
         Ref: https://dba.stackexchange.com/a/55998
         '''
-
         cursor.execute('''SELECT user_id, COUNT(*)
             FROM employee_leave_table, generate_series(leave_start_date::timestamp
                 , leave_end_date::timestamp - interval '1 day'
@@ -612,12 +611,14 @@ def command_absent_month(ack, say, command):
     if len(users_tuple_list) == 0:
         say("There is no members on leave in the month :relaxed:")
     else:
+        title_txt = "List of members with absent count "
+        title_txt = is_weekend_included and f"{title_txt}:" or f"{title_txt} (weekends excluded):"
         mssg = {
             "blocks": [
                 {
                     "type": "section",
                     "text": {
-                        "text": "List of members with absent count:",
+                        "text": title_txt,
                         "type": "mrkdwn"
                     },
                     "fields": [
