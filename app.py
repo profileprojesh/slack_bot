@@ -234,7 +234,6 @@ def command_by_day_handler(command):
         absent_text = len(command_args) == 3 and command_args[2] or None
         print(f'absent_text is {absent_text}')
         print(f'days: {days}')
-        # print(f'absent_text {absent_text}')
 
         days = int(days)
         start_date = datetime.date.today()
@@ -269,19 +268,22 @@ def command_by_day_handler(command):
     return mssg, False
 
 
-# TODO: CHECK
-def get_absent_by_month_handler(command):
+def base_get_absent_handler(command, for_month=True):
     """
     Handles absent command by month 
     Args:
-        command: slack bot command
+        command: str, slack bot command
+        for_month: bool, month or year 
     Returns dictionary of keys:
         message: str
         value: int , month number
         is_weekend_included: bool, weekend included or not
     """
+    handler_text = for_month and "month" or "year"
+
+    mssg = f"You have entered incorrect command. Try: `{for_month and '/out-month' or '/out-year'}` to get absent members this {handler_text}."
     response = {
-        "message": "You have entered incorrect command. Try: `/out-month` to get absent members this month.",
+        "message": mssg,
         "value": None,
         "is_weekend_included": None,
     }
@@ -292,31 +294,45 @@ def get_absent_by_month_handler(command):
         if len(command_args) > 3:
             raise IndexError()
     
-        month_number = command_args[1]
+        month_year_number = command_args[1]
         is_weekend_included = len(command_args) == 3 and command_args[2] or "true"
 
-        month_number = int(month_number)
+        month_year_number = int(month_year_number)
 
-        if month_number not in range(1,13):
-            raise Exception("Month number must be between 1 and 12.")
+        if for_month:
+            if month_year_number not in range(1,13):
+                raise Exception("Month number must be between 1 and 12.")
+        else:
+            if month_year_number < 1980:
+                raise Exception("Year must be valid.")
 
         if is_weekend_included not in ["true", "false"]:
             raise Exception("Last value can either be *true* or *false*.")
 
-        response["value"] = month_number
+        response["value"] = month_year_number
         response["message"] = "success"
         response["is_weekend_included"] = is_weekend_included == "true"
         return response, True
 
     except IndexError:
-        mssg = f"You can pass *month number* and *include weekends*. Example: `/out-month -m 1 false`"
+        cmd_ex = for_month and "/out-month -m 1 false" or "/out-year -y 2021 false" 
+        mssg = f"You can pass *month number* and *include weekends*. Example: `{cmd_ex}`"
     except ValueError as ve:
-        mssg = f"Month number must be integer."
+        mssg = f"{handler_text.capitalize()} number must be integer."
     except Exception as e:
         mssg = str(e)
 
     response["message"] = mssg
     return response, False
+
+
+def get_absent_by_month_handler(command):
+    return base_get_absent_handler(command=command, for_month=True)
+
+
+def get_absent_by_year_handler(command):
+    return base_get_absent_handler(command=command, for_month=False)
+
 
 """
 Types of commands available
@@ -327,7 +343,9 @@ COMMAND_ABSENT_ARGS = {
 COMMAND_ABSENT_BY_MONTH_ARGS = {
     '-m': get_absent_by_month_handler,
 }
-
+COMMAND_ABSENT_BY_YEAR_ARGS = {
+    '-y': get_absent_by_year_handler,
+}
 
 def get_command_absent_view(start_date=None, end_date=None):
     print("Inside absent view")
@@ -415,6 +433,7 @@ def validate_absent_data(start_date, end_date, text=None):
     
     return errors
 
+
 def save_absent(client, user_id, username, logger):
     """
     Saves the absent record in the database. Shows error message or success message
@@ -464,12 +483,146 @@ def save_absent(client, user_id, username, logger):
         msg = "There was an error."
         logger.exception(f"Failed to post a message {e}")
         
+
+def get_sql_for_year_month(for_month, is_weekend_included):
+    """
+    Returns sql query to retrieve absent record by month or year
+    Args:
+        for_month: bool, sql for month or year
+        is_weekend_included: bool
+    """
+    sql = ""
+    if for_month:
+        sql = """SELECT
+                user_id,
+                EXTRACT('MONTH' FROM days.s) AS MONTH,
+                COUNT(*) AS d
+                FROM employee_leave el
+                CROSS JOIN LATERAL (
+                    SELECT * FROM generate_series(el.leave_start_date, el.leave_end_date - interval '1 day', INTERVAL '1 day') s
+                ) days        
+                WHERE EXTRACT('MONTH' FROM days.s) = %s
+            """
+
+        if is_weekend_included:
+            sql += " GROUP BY 1, 2 ORDER BY d DESC;"
+        else:
+            sql += " AND EXTRACT('ISODOW' FROM days.s) < 6 GROUP BY 1, 2 ORDER BY d DESC;"
+    else:
+        sql = """SELECT
+                    user_id,
+                    EXTRACT('YEAR' FROM days.s) AS YEAR,
+                    COUNT(*) AS d
+                    FROM employee_leave el
+                    CROSS JOIN LATERAL (
+                        SELECT * FROM generate_series(el.leave_start_date, el.leave_end_date - interval '1 day', INTERVAL '1 day') s
+                    ) days        
+                    WHERE EXTRACT('YEAR' FROM days.s) = %s
+                """
+
+        if is_weekend_included:
+            sql += " GROUP BY 1, 2 ORDER BY d DESC;"
+        else:
+            sql += " AND EXTRACT('ISODOW' FROM days.s) < 6 GROUP BY 1, 2 ORDER BY d DESC;"
+    return sql
+
+
+def base_command_absent_by_month_year(say, command, for_month=True, **kwargs):
+    """
+    Base function to handle absent by month or year command
+    Args:
+        say: Slack bolt say
+        command: Slack bolt command
+        for_month: bool, command for month or not
+        **kwargs
+    """
+
+    command_text = command.get("text")
+    is_weekend_included = True
+
+    print(kwargs)
+    print(command)
+
+    date_text = kwargs["text"]
+    date_number = kwargs["number"] 
+    command_args_const = kwargs["constant"]
+
+    if command_text:
+        cm_text = for_month and "/out-month" or "/out-year"
+        mssg = f"You have entered incorrect command. Try: `{cm_text}` to get absent members this {date_text}."
+        command_args = shlex.split(command_text) 
+        command_key = command_args[0]
+
+        is_valid = False
+
+        try:
+            func = command_args_const[command_key]
+            data, is_valid = func(command)
+
+            mssg = data.get("message")
+
+            if is_valid:
+                date_number = data.get("value")
+                is_weekend_included = data.get("is_weekend_included")
+
+        except KeyError:
+            available_texts = ", ".join([''.join(key) for key, value in command_args_const.items()])
+            mssg = f"Incorrect command parameter: `{command_text}`, available are: `{available_texts}`"
+            
+        if not is_valid:
+            say(mssg)
+            return
+
+    sql = get_sql_for_year_month(for_month, is_weekend_included)
+    
+    cursor.execute(sql, (date_number,))
+
+    users_tuple_list = cursor.fetchall()
+
+    if len(users_tuple_list) == 0:
+        say(f"There is no members on leave in the {date_text} :relaxed:")
+    else:
+        title_txt = "List of members with absent count "
+        title_txt = is_weekend_included and f"{title_txt}:" or f"{title_txt} (weekends excluded):"
+        mssg = {
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "text": title_txt,
+                        "type": "mrkdwn"
+                    },
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": "*Name*"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "*Leave Days*"
+                        },
+                    ]
+                }
+            ]
+        }
+        print(users_tuple_list)
+        for user in users_tuple_list:
+            for i in [0, 2]:
+                col_dict = {
+                    "type": "plain_text"
+                }
+                col_dict["text"] = str(user[i])
+                mssg["blocks"][0]["fields"].append(col_dict)
+
+        say(**mssg)
+
+
+
 """
 --------------------
 Below are all slack bolt listeners
 --------------------
 """
-
 @app.command("/out")
 def command_absent(ack, say, command, client, body):
     ack()
@@ -589,94 +742,26 @@ def command_absent_today(ack, say):
 def command_absent_month(ack, say, command):
     ack()
 
-    command_text = command.get("text")
-    month_number = datetime.datetime.now().month
-    is_weekend_included = True
+    kwargs = {
+        "text": "month",
+        "number": datetime.datetime.today().month,
+        "constant": COMMAND_ABSENT_BY_MONTH_ARGS,
+    }
 
-    if command_text:
-        mssg = "You have entered incorrect command. Try: `/out-month` to get absent members this month."
-        command_args = shlex.split(command_text) 
-        command_key = command_args[0]
+    base_command_absent_by_month_year(say=say, command=command, for_month=True, **kwargs)
 
-        is_valid = False
 
-        try:
-            func = COMMAND_ABSENT_BY_MONTH_ARGS[command_key]
-            data, is_valid = func(command)
+@app.command("/out-year")
+def command_absent_year(ack, say, command):
+    ack()
 
-            mssg = data.get("message")
+    kwargs = {
+        "text": "year",
+        "number": datetime.datetime.today().year,
+        "constant": COMMAND_ABSENT_BY_YEAR_ARGS,
+    }
 
-            if is_valid:
-                month_number = data.get("value")
-                is_weekend_included = data.get("is_weekend_included")
-
-        except KeyError:
-            available_texts = ", ".join([''.join(key) for key, value in COMMAND_ABSENT_BY_MONTH_ARGS.items()])
-            mssg = f"Incorrect command parameter: `{command_text}`, available are: `{available_texts}`"
-            
-        if not is_valid:
-            say(mssg)
-            return
-
-    '''
-    Ref: https://dba.stackexchange.com/a/55998
-    '''
-    sql = """SELECT
-                user_id,
-                EXTRACT('MONTH' FROM days.s) AS MONTH,
-                COUNT(*) AS d
-                FROM employee_leave el
-                CROSS JOIN LATERAL (
-                    SELECT * FROM generate_series(el.leave_start_date, el.leave_end_date - interval '1 day', INTERVAL '1 day') s
-                ) days        
-                WHERE EXTRACT('MONTH' FROM days.s) = %s
-            """
-
-    if is_weekend_included:
-        sql += " GROUP BY 1, 2 ORDER BY d DESC;"
-    else:
-        sql += " AND EXTRACT('ISODOW' FROM days.s) < 6 GROUP BY 1, 2 ORDER BY d DESC;"
-    
-    cursor.execute(sql, (month_number,))
-
-    users_tuple_list = cursor.fetchall()
-
-    if len(users_tuple_list) == 0:
-        say("There is no members on leave in the month :relaxed:")
-    else:
-        title_txt = "List of members with absent count "
-        title_txt = is_weekend_included and f"{title_txt}:" or f"{title_txt} (weekends excluded):"
-        mssg = {
-            "blocks": [
-                {
-                    "type": "section",
-                    "text": {
-                        "text": title_txt,
-                        "type": "mrkdwn"
-                    },
-                    "fields": [
-                        {
-                            "type": "mrkdwn",
-                            "text": "*Name*"
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": "*Leave Days*"
-                        },
-                    ]
-                }
-            ]
-        }
-        print(users_tuple_list)
-        for user in users_tuple_list:
-            for i in [0, 2]:
-                col_dict = {
-                    "type": "plain_text"
-                }
-                col_dict["text"] = str(user[i])
-                mssg["blocks"][0]["fields"].append(col_dict)
-
-        say(**mssg)
+    base_command_absent_by_month_year(say=say, command=command, for_month=False, **kwargs)
 
 
 if __name__ == "__main__":
