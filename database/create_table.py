@@ -1,5 +1,4 @@
 import psycopg2
-from config import config
 from db import Db
 
 db = Db()
@@ -16,11 +15,10 @@ def create_daily_survey_table():
             answer VARCHAR(50) NOT NULL
         );
         """
-
         
     try:
         y=cur.execute(query)
-        db.commit();
+        db.commit()
         print("Tables Created successfully")
 
     except (Exception, psycopg2.DatabaseError) as error:
@@ -30,19 +28,20 @@ def create_daily_survey_table():
 def create_leave_table():
 
     query="""
-        CREATE TABLE employee_leave_table(
+        CREATE TABLE employee_leave (
             id SERIAL PRIMARY KEY,
             user_id VARCHAR(100) NOT NULL,
             leave_start_date DATE NOT NULL,
             leave_end_date DATE NOT NULL,
-            reason_text TEXT,
+            remarks VARCHAR(300),
+            leave_days INT NOT NULL,
             UNIQUE (user_id, leave_start_date)
         );
         """
         
     try:
         y=cur.execute(query)
-        db.commit();
+        db.commit()
         print("Tables Created successfully")
 
     except (Exception, psycopg2.DatabaseError) as error:

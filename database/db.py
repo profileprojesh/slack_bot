@@ -1,14 +1,21 @@
 import psycopg2
-from .config import config
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+params = {
+    'host':os.getenv('DB_HOST'),
+    'user':os.getenv('DB_USER'),
+    'password':os.getenv('DB_PASSWORD'),
+    'dbname':os.getenv('DB_NAME'),
+}
 
 class Db:
-    conn =None;
-    def __init__(self) -> None:
-        pass
+    def __init__(self):
+        self.conn =None
 
     def connect(self):
-        params = config()
-
         # connect to the PostgreSQL server
         print('Connecting to the PostgreSQL database...')
         self.conn = psycopg2.connect(**params)

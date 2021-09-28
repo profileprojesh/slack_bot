@@ -12,12 +12,15 @@ from database import Db
 env_path = Path('.') / '.env'
 load_dotenv(dotenv_path=env_path)
 
+CHANNEL_ID = os.getenv("CHANNEL_ID", None)
+
 # Initializes your app with  bot token and signing secret
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
 
+# It stores username with its related questions and  answers
 answers = {}
 
 
@@ -141,7 +144,7 @@ def convert_stored_response_to_tuple_list(answers, for_leave=False):
 
 
 @app.action("save_response")
-def save_survey_response(ack, action, respond):
+def save_survey_response(ack, respond):
     ack()
 
     list = convert_stored_response_to_tuple_list(answers)
@@ -160,7 +163,7 @@ def save_survey_response(ack, action, respond):
 
 
 @app.action(re.compile('radio_buttons-(fine|action)'))
-def store_radio_click(ack, action, client, body):
+def store_radio_click(ack, action, body):
     ack()
 
     for i in body.get("message").get("blocks"):
@@ -211,19 +214,27 @@ def command_by_day_handler(command):
     """
     Returns start and end date format
     Args:
-      command: Slack bolt commant argument
+      days = str, Days passed as a parameter in command
+      user_id = str, Requested user id
     """
+    print("inside command by day hander func")
     mssg = "You have entered incorrect command. Try: `/out` to add manually."
-    user_name = command.get("user_name")
+    print(f'command {command}')
+    user_id = command.get("user_name")
 
     command_args = shlex.split(command.get("text")) 
+    print(f'command_args: {command_args}')
 
     try:
         if len(command_args) > 3:
-            raise IndexError()
-    
+            print("inside index error if block")
+            raise IndexError
+
         days = command_args[1]
         absent_text = len(command_args) == 3 and command_args[2] or None
+        print(f'absent_text is {absent_text}')
+        print(f'days: {days}')
+        # print(f'absent_text {absent_text}')
 
         days = int(days)
         start_date = datetime.date.today()
@@ -232,29 +243,43 @@ def command_by_day_handler(command):
         start_format = start_date.strftime("%Y-%m-%d")
         end_format = end_date.strftime("%Y-%m-%d")
 
-        errors = validate_absent_data(start_format, end_format, absent_text)
+        errors = validate_absent_data(start_format, end_format)
 
         if len(errors) > 0:
+            print("Inisde lenght block")
             mssg = "Please correct your values:\n"
-            mssg += "\n".join(['> ' + value for key, value in errors.items()])
-            return mssg, False
+            error_list = [''.join(value) for key, value in errors.items()]
+            new_mssg = mssg + "> {}".format("\n".join(error_list))
+            return new_mssg, False
 
-        command_absent_answers[user_name] = {}
-        command_absent_answers[user_name][BLOCK_ID_ABSENT_START] = start_format
-        command_absent_answers[user_name][BLOCK_ID_ABSENT_END] = end_format
-        command_absent_answers[user_name][BLOCK_ID_USER_TEXT] = absent_text
+        command_absent_answers[user_id] = {}
+        command_absent_answers[user_id][BLOCK_ID_ABSENT_START] = start_format
+        command_absent_answers[user_id][BLOCK_ID_ABSENT_END] = end_format
+        command_absent_answers[user_id][BLOCK_ID_USER_TEXT] = absent_text
 
         mssg = f"You will be on leave from: *{start_format}* and available from: *{end_format}*. Save?"
         return mssg, True
 
-    except IndexError:
-        mssg = f"You can pass two values: *day* and *leave_text*. Example: `/out -d 1 \"I am travelling.\"`"
-    except ValueError as ve:
+    except ValueError:
         mssg = f"Days must be integer."
+    except IndexError:
+        mssg = f"You have to pass two values: *day* and *leave_text*. Example: `/out -d 1 \"I am travelling.\"`"
 
+    print("retuned some value")
     return mssg, False
 
+
+# TODO: CHECK
 def get_absent_by_month_handler(command):
+    """
+    Handles absent command by month 
+    Args:
+        command: slack bot command
+    Returns dictionary of keys:
+        message: str
+        value: int , month number
+        is_weekend_included: bool, weekend included or not
+    """
     response = {
         "message": "You have entered incorrect command. Try: `/out-month` to get absent members this month.",
         "value": None,
@@ -305,12 +330,7 @@ COMMAND_ABSENT_BY_MONTH_ARGS = {
 
 
 def get_command_absent_view(start_date=None, end_date=None):
-    """
-    Return command absent view dictionary.
-    Args:
-        start_date (datetime): datetime of starting leave (Default: Today)
-        start_date (datetime): datetime of coming from leave (Default: Tomorrow)
-    """
+    print("Inside absent view")
     start_date = start_date or datetime.date.today()
     end_date = end_date or (start_date + datetime.timedelta(days=1))
     
@@ -358,8 +378,8 @@ def get_command_absent_view(start_date=None, end_date=None):
                 },
                 {
                     "type": "input",
-                    "optional": True,
                     "block_id": BLOCK_ID_USER_TEXT,
+                    "optional":True,
                     "label": {
                         "type": "plain_text", 
                         "text": "What is the reason for leave?"
@@ -395,7 +415,7 @@ def validate_absent_data(start_date, end_date, text=None):
     
     return errors
 
-def save_absent(client, user_id, logger):
+def save_absent(client, user_id, username, logger):
     """
     Saves the absent record in the database. Shows error message or success message
     Args:
@@ -405,33 +425,45 @@ def save_absent(client, user_id, logger):
     """
     msg = ""
     try:
-        list = convert_stored_response_to_tuple_list(command_absent_answers, True)
+        print(f'client {client}')
+        list = convert_stored_response_to_tuple_list(command_absent_answers, for_leave=True)
         print("list", list)
-        # query = """INSERT INTO employee_leave_table(user_id,leave_start_date,leave_end_date,reason_text)
-        #         VALUES(%s,%s,%s,%s) RETURNING id;"""
+        start_date = list[1]
+        end_date = list[2]
+        start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+        end_date = datetime.datetime.strptime(end_date, "%Y-%m-%d")
+        print(start_date)
+        days = (end_date-start_date).days
+        list.append(days)
+        print(f"DAYS: {days}")
+        print(f'list {list}')
+        channels = [user_id, ]
+        if CHANNEL_ID:
+            channels.append(CHANNEL_ID)
+        print(f"channels {channels}")
 
-        query = """INSERT INTO employee_leave_table(user_id,leave_start_date,leave_end_date,reason_text)
-                VALUES(%s,%s,%s,%s)
-                ON CONFLICT ON CONSTRAINT employee_leave_table_user_id_leave_start_date_key 
+        # Save to db
+        query = """INSERT INTO employee_leave (user_id,leave_start_date,leave_end_date,remarks,leave_days)
+                VALUES(%s,%s,%s,%s,%s)
+                ON CONFLICT (user_id, leave_start_date) 
                 DO UPDATE SET
                 leave_end_date = EXCLUDED.leave_end_date,
-                reason_text = EXCLUDED.reason_text RETURNING id;"""
+                remarks = EXCLUDED.remarks,
+                leave_days = EXCLUDED.leave_days
+                RETURNING id;"""
 
         cursor.execute(query, list)
         db.commit()
         print(command_absent_answers)
-        msg = f"Absent record Saved."
+        msg = f"{username} is in leave from {list[1]} to {list[2]}"
+        for ch in channels:
+            client.chat_postMessage(channel=ch, text=msg)
 
     except Exception as e:
         print(e)
         msg = "There was an error."
-
-    try:
-        client.chat_postMessage(channel=user_id, text=msg)
-    except Exception as e:
         logger.exception(f"Failed to post a message {e}")
-
-
+        
 """
 --------------------
 Below are all slack bolt listeners
@@ -497,17 +529,19 @@ def command_absent(ack, say, command, client, body):
 @app.action("absent_date-save")
 def save_leave_response(ack, body, client, logger):
     ack()
+    username = body.get("user").get("username")
     user_id = body.get("user").get("id")
 
-    save_absent(client=client, user_id=user_id, logger=logger)
+    save_absent(client=client, user_id=user_id, logger=logger, username=username)
 
 
 @app.view("absent_view")
 def handle_absent_modal_submission(ack, body, client, view, logger):
-    print("--------------")
-
+    print("Inside absent modal submit")
+    print(f'body: {body}')
+    username = body.get("user").get("username") 
     user_id = body.get("user").get("id")
-    user_name = body.get("user").get("name")
+    print(f'username: {username}')
 
     data = view["state"]["values"]
 
@@ -518,27 +552,29 @@ def handle_absent_modal_submission(ack, body, client, view, logger):
     errors = validate_absent_data(absent_start_date, absent_end_date, absent_text)
 
     if len(errors) > 0:
+        print(f'errors {errors}')
         ack(response_action="errors", errors=errors)
         return
 
     ack()
 
-    command_absent_answers[user_name] = {}
-    command_absent_answers[user_name][BLOCK_ID_ABSENT_START] = absent_start_date
-    command_absent_answers[user_name][BLOCK_ID_ABSENT_END] = absent_end_date
-    command_absent_answers[user_name][BLOCK_ID_USER_TEXT] = absent_text
+    command_absent_answers[username] = {}
+    command_absent_answers[username][BLOCK_ID_ABSENT_START] = absent_start_date
+    command_absent_answers[username][BLOCK_ID_ABSENT_END] = absent_end_date
+    command_absent_answers[username][BLOCK_ID_USER_TEXT] = absent_text
 
-    save_absent(client=client, user_id=user_id, logger=logger)
+    save_absent(client=client, user_id=user_id, logger=logger, username=username)
 
 
 @app.command("/out-today")
 def command_absent_today(ack, say):
     ack()
-    say_mssg = "Members who are on leave:\n"
+    say_mssg = "Members who are on *leave today*:\n"
     cursor.execute("""SELECT DISTINCT user_id 
-                        FROM employee_leave_table 
-                        WHERE leave_start_date = %s;
-                    """, (datetime.date.today(), ))
+                        from employee_leave
+                        WHERE ((current_date-leave_start_date)= 0 or sign(current_date-leave_start_date)=1) 
+                        AND ((current_date-leave_start_date)<(leave_end_date-leave_start_date));
+                    """)
     users_tuple_list = cursor.fetchall()
 
     if len(users_tuple_list) == 0:
@@ -582,29 +618,26 @@ def command_absent_month(ack, say, command):
             say(mssg)
             return
 
+    '''
+    Ref: https://dba.stackexchange.com/a/55998
+    '''
+    sql = """SELECT
+                user_id,
+                EXTRACT('MONTH' FROM days.s) AS MONTH,
+                COUNT(*) AS d
+                FROM employee_leave el
+                CROSS JOIN LATERAL (
+                    SELECT * FROM generate_series(el.leave_start_date, el.leave_end_date - interval '1 day', INTERVAL '1 day') s
+                ) days        
+                WHERE EXTRACT('MONTH' FROM days.s) = %s
+            """
+
     if is_weekend_included:
-        cursor.execute('''SELECT du.user_id, SUM(du.leave_days) as total
-            FROM (
-                SELECT user_id, leave_start_date, (leave_end_date::date - leave_start_date::date) as leave_days
-                FROM employee_leave_table
-            ) du
-            WHERE EXTRACT(MONTH FROM leave_start_date) = %s
-            GROUP BY du.user_id
-            ORDER BY SUM(du.leave_days) DESC;
-            ''', (month_number,))
+        sql += " GROUP BY 1, 2 ORDER BY d DESC;"
     else:
-        '''
-        Ref: https://dba.stackexchange.com/a/55998
-        '''
-        cursor.execute('''SELECT user_id, COUNT(*)
-            FROM employee_leave_table, generate_series(leave_start_date::timestamp
-                , leave_end_date::timestamp - interval '1 day'
-                , interval  '1 day') the_day
-            WHERE EXTRACT('ISODOW' FROM the_day) < 6 
-            AND EXTRACT('MONTH' FROM leave_start_date) = %s
-            GROUP BY user_id
-            ORDER BY COUNT(*) DESC;
-            ''', (month_number,))
+        sql += " AND EXTRACT('ISODOW' FROM days.s) < 6 GROUP BY 1, 2 ORDER BY d DESC;"
+    
+    cursor.execute(sql, (month_number,))
 
     users_tuple_list = cursor.fetchall()
 
@@ -628,14 +661,15 @@ def command_absent_month(ack, say, command):
                         },
                         {
                             "type": "mrkdwn",
-                            "text": "*Total*"
+                            "text": "*Leave Days*"
                         },
                     ]
                 }
             ]
         }
+        print(users_tuple_list)
         for user in users_tuple_list:
-            for i in range(2):
+            for i in [0, 2]:
                 col_dict = {
                     "type": "plain_text"
                 }
@@ -643,7 +677,6 @@ def command_absent_month(ack, say, command):
                 mssg["blocks"][0]["fields"].append(col_dict)
 
         say(**mssg)
-
 
 
 if __name__ == "__main__":
