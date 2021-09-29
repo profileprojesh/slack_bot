@@ -310,7 +310,6 @@ def base_get_absent_handler(command, for_month=True):
 
         if is_weekend_included not in ["true", "false"]:
             raise Exception("Last value can either be *true* or *false*.")
-
         response["value"] = month_year_number
         response["message"] = "success"
         response["is_weekend_included"] = is_weekend_included == "true"
@@ -455,6 +454,7 @@ def save_absent(client, user_id, username, logger):
         end_date = datetime.datetime.strptime(end_date, "%Y-%m-%d")
         print(start_date)
         days = (end_date-start_date).days
+        print(f'days {days}')
         list.append(days)
         print(f"DAYS: {days}")
         print(f'list {list}')
@@ -474,6 +474,7 @@ def save_absent(client, user_id, username, logger):
                 RETURNING id;"""
 
         cursor.execute(query, list)
+        print(f'cursor {cursor}')
         db.commit()
         print(command_absent_answers)
         msg = f"{username} is in leave from {list[1]} to {list[2]}"
@@ -620,6 +621,20 @@ def base_command_absent_by_month_year(say, command, for_month=True, **kwargs):
 
 
 
+# helper function to find out weather a person is valid to take leave or not
+def check_employee_leave_validity(start_date, end_date):
+    """
+    This takes start_date and end_date of user stored in database as arguments  and returns a Boolean value to ascertain validatity of user to take leave.
+    """
+    valid = True
+    days = end_date-start_date
+    today = datetime.date.today()
+    days_pass = today-start_date
+    if days_pass < days:
+        valid = False
+    return valid
+
+
 """
 --------------------
 Below are all slack bolt listeners
@@ -628,19 +643,38 @@ Below are all slack bolt listeners
 @app.command("/out")
 def command_absent(ack, say, command, client, body):
     ack()
-    print(command)
     command_text = command.get("text")
+    print(f'body {body}')
+    user_id = body.get('user_name')
+    cursor.execute("SELECT * FROM employee_leave where user_id = %s ORDER BY leave_start_date desc;",(user_id,))
+    x = cursor.fetchall()
+    if x:
+        print(f'The query is {x}')
+        start_date = x[0][2]
+        print(f'start_date: {start_date}')
+        end_date = x[0][3]
+        is_able=check_employee_leave_validity(start_date, end_date)
+        print(f'is_able {is_able}')
+        if not is_able:
+            say("Oops!! You are currently in leave and cannot take leave")
+            return
+    print(x)
+    print("printing the query")
+    # db.commit()
 
     if command_text:
+        print("Inside command text")
         mssg = "You have entered incorrect command. Try: `/out` to add manually."
         command_args = shlex.split(command_text) 
         command_key = command_args[0]
-
-        is_valid = False
+        print(f'command: {command}')
 
         try:
             func = COMMAND_ABSENT_ARGS[command_key]
+            print(func)
             mssg, is_valid = func(command)
+            print('returned value')
+            print(mssg, is_valid)
 
             if is_valid:
                 say(
@@ -667,13 +701,19 @@ def command_absent(ack, say, command, client, body):
                         },
                     ]
                 )
+            else:
+                say(mssg)
 
         except KeyError:
+            print("inside key error")
             available_texts = ", ".join([''.join(key) for key, value in COMMAND_ABSENT_ARGS.items()])
+            print(available_texts)
             mssg = f"Incorrect command parameter: `{command_text}`, available are: `{available_texts}`"
-
-        if not is_valid:
             say(mssg)
+        except Exception:
+            print("inside exception")
+            say(mssg)
+
     else:
         client.views_open(
             trigger_id=body["trigger_id"],

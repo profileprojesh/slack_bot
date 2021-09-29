@@ -11,6 +11,7 @@ params = {
     'dbname':os.getenv('DB_NAME'),
 }
 
+
 class Db:
     def __init__(self):
         self.conn =None
