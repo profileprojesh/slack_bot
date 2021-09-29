@@ -47,6 +47,43 @@ def create_leave_table():
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
 
+def create_question_table():
+    query = """
+        CREATE TABLE question (
+            id SERIAL PRIMARY KEY,
+            text VARCHAR(255) NOT NULL,
+            type VARCHAR(50) NOT NULL
+        );
+        """
+    try:
+        y=cur.execute(query)
+        db.commit()
+        print("Question table Created successfully")
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+
+def create_question_option():
+    query = """
+        CREATE TABLE question_option (
+            id SERIAL PRIMARY KEY,
+            value VARCHAR(50) NOT NULL,
+            display_text VARCHAR(50) NOT NULL,
+            question_id SERIAL NOT NULL,
+            CONSTRAINT fk_question FOREIGN KEY(question_id) REFERENCES question(id)
+        );
+    """
+
+    try:
+        y=cur.execute(query)
+        db.commit()
+        print("Question options created successfully")
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+
+
 
 if __name__ =="__main__":
-    create_leave_table()
+    create_question_table()
+    create_question_option()

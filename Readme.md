@@ -17,6 +17,6 @@ Events till now:
 * `/out-today`:- Gets all name of member who are absent today.
 * `/out-month`:- Gets all member who are absent by month.
     * `/out-month` - > All members absent in current month
-    * `/out -m n` where n is *number of month* -> All members absent by specific month
-    * `/out -m n false`-> All members absent by specific month, _false_ represent include weekends or not
+    * `/out-month -m n` where n is *number of month* -> All members absent by specific month
+    * `/out-month -m n false`-> All members absent by specific month, _false_ represent include weekends or not
 

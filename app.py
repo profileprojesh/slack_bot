@@ -5,6 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 import re
+import ast
 import datetime
 
 from database import Db
@@ -288,8 +289,9 @@ def base_get_absent_handler(command, for_month=True):
         "is_weekend_included": None,
     }
 
-    command_args = shlex.split(command.get("text")) 
-
+    # command_args = re.findall(r'\w+|\[\w+.+\w+\]', command.get("text"))
+    command_args = shlex.split(command.get("text"))
+    
     try:
         if len(command_args) > 3:
             raise IndexError()
