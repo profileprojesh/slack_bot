@@ -30,87 +30,49 @@ cursor = db.connect()
 
 # Listens to incoming messages that contain "hello"
 
+def get_question_blocks(questions):
+    def get_question_options(options):
+        dict_list = []
+        for k, v in options.items():
+            dict = {
+                    "text": {
+                        "type": "plain_text",
+                        "text": v,
+                        "emoji": True
+                    },
+                    "value": k
+                }
+            dict_list.append(dict)
+        return dict_list
+
+    blocks = []
+    for question in questions:
+        dict = {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": question[1]
+                },
+                "block_id": str(question[0]),
+                "accessory": {
+                    "type": question[2],
+                    "action_id": question[3],
+                    "options": get_question_options(question[4])
+                }
+            }
+        blocks.append(dict)
+    return blocks
+
 
 @app.message("hello")
 def message_hello(message, say):
-    # say() sends a message to the channel where the event was triggered
-    say(
-        blocks=[
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Will you be working from home, today?"
-                },
-                "accessory": {
-                    "type": "radio_buttons",
-                    "action_id": "radio_buttons-action",
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "No",
-                                "emoji": True
-                            },
-                            "value": "0"
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Yes",
-                                "emoji": True
-                            },
-                            "value": "1"
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Maybe",
-                                "emoji": True
-                            },
-                            "value": "2"
-                        }
-                    ],
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Are you Fine today?"
-                },
-                "accessory": {
-                    "type": "radio_buttons",
-                    "action_id": "radio_buttons-fine",
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "No",
-                                "emoji": True
-                            },
-                            "value": "0"
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Yes",
-                                "emoji": True
-                            },
-                            "value": "1"
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Maybe",
-                                "emoji": True
-                            },
-                            "value": "2"
-                        }
-                    ],
-                }
-            },
-            {
+    cursor.execute("SELECT * FROM question")
+    questions = cursor.fetchall()
+    print(questions)
+
+    blocks = get_question_blocks(questions)
+
+    submit_dict = {
                 "type": "actions",
                 "elements": [
                     {
@@ -123,7 +85,10 @@ def message_hello(message, say):
                     }
                 ]
             }
-        ],
+    blocks.append(submit_dict)
+    print(blocks)
+    say(
+        blocks=blocks,
         text=f"Save your response <@{message['user']}>!"
     )
 
@@ -173,12 +138,8 @@ def store_radio_click(ack, action, body):
     print(f'action {action}')
     print("Inside response handling section")
 
-    action_block_id = action.get('block_id')
-    for i in body.get("message").get("blocks"):
-        if i.get('block_id') == action_block_id:
-            question = i.get('text').get('text')
+    question_id = action.get('block_id')
 
-    print(f'action_block_id {action_block_id}')
     selected_option = action.get('selected_option')
     print(f'selected_option {selected_option}')
     value = selected_option.get('text').get('text')
@@ -191,10 +152,10 @@ def store_radio_click(ack, action, body):
     print(f'user_id {user_id}')
 
     if user_id in answers:
-        answers[user_id][question] = value
+        answers[user_id][question_id] = value
     else:
         answers[user_id] = {}
-        answers[user_id][question] = value
+        answers[user_id][question_id] = value
 
     print(f'answers: {answers}')
 

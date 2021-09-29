@@ -1,3 +1,4 @@
+import json
 import psycopg2
 from db import Db
 
@@ -11,15 +12,17 @@ def create_daily_survey_table():
         CREATE TABLE daily_survey(
             id SERIAL PRIMARY KEY,
             user_id VARCHAR(100) NOT NULL,
-            question_id VARCHAR(200) NOT NULL,
-            answer VARCHAR(50) NOT NULL
+            question_id SERIAL NOT NULL,
+            answer VARCHAR(50) NOT NULL,
+            answered_datetime TIMESTAMP DEFAULT current_timestamp,
+            CONSTRAINT fk_question FOREIGN KEY(question_id) REFERENCES question(id)
         );
         """
         
     try:
         y=cur.execute(query)
         db.commit()
-        print("Tables Created successfully")
+        print("Daily survey created successfully")
 
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
@@ -42,17 +45,20 @@ def create_leave_table():
     try:
         y=cur.execute(query)
         db.commit()
-        print("Tables Created successfully")
+        print("Employee leave created successfully")
 
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
+
 
 def create_question_table():
     query = """
         CREATE TABLE question (
             id SERIAL PRIMARY KEY,
-            text VARCHAR(255) NOT NULL,
-            type VARCHAR(50) NOT NULL
+            text VARCHAR(255) UNIQUE NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            action_id VARCHAR(50) NOT NULL,
+            option JSON NOT NULL
         );
         """
     try:
@@ -63,27 +69,25 @@ def create_question_table():
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
 
-def create_question_option():
-    query = """
-        CREATE TABLE question_option (
-            id SERIAL PRIMARY KEY,
-            value VARCHAR(50) NOT NULL,
-            display_text VARCHAR(50) NOT NULL,
-            question_id SERIAL NOT NULL,
-            CONSTRAINT fk_question FOREIGN KEY(question_id) REFERENCES question(id)
-        );
-    """
 
-    try:
-        y=cur.execute(query)
-        db.commit()
-        print("Question options created successfully")
-
-    except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
-
-
+def insert_question():
+    option_json = {
+            "0": "No",
+            "1": "Yes",
+            "2": "Maybe",
+        }
+    questions = [
+        ("Will you be working from home, today?", "radio_buttons", "radio_buttons-action", json.dumps(option_json)),
+        ("Are you Fine today?", "radio_buttons", "radio_buttons-fine", json.dumps(option_json)),
+    ]
+    query = """INSERT INTO question (text, type, action_id, option)
+                VALUES(%s,%s,%s,%s) RETURNING id;"""
+    x = cur.executemany(query, questions)
+    db.commit()
+    print("Questions added")
+    
 
 if __name__ =="__main__":
     create_question_table()
-    create_question_option()
+    create_daily_survey_table()
+    insert_question()
