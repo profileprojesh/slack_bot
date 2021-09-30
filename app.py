@@ -250,28 +250,44 @@ def base_get_absent_handler(command, for_month=True):
         "is_weekend_included": None,
     }
 
-    # command_args = re.findall(r'\w+|\[\w+.+\w+\]', command.get("text"))
-    command_args = shlex.split(command.get("text"))
-    
+    command_args = re.findall(r'\w+|\[\w+.+\w+\]', command.get("text"))
+    # command_args = shlex.split(command.get("text"))
+
     try:
         if len(command_args) > 3:
             raise IndexError()
+
+        date_range = None
     
         month_year_number = command_args[1]
         is_weekend_included = len(command_args) == 3 and command_args[2] or "true"
 
-        month_year_number = int(month_year_number)
+        if month_year_number.startswith("[") and month_year_number.endswith("]"):
+            date_range = ast.literal_eval(str(month_year_number))
 
-        if for_month:
-            if month_year_number not in range(1,13):
-                raise Exception("Month number must be between 1 and 12.")
+            if len(date_range) > 2:
+                raise Exception("List can only have two elements: _start_ and _end (included)_.")
         else:
-            if month_year_number < 1980:
+            month_year_number = int(month_year_number)
+            date_range = [month_year_number, month_year_number]
+
+        print("DATE RANGE: "+str(date_range))
+
+        if int(date_range[0]) > int(date_range[1]):
+            raise Exception("List first element must be less than later one.")
+        
+        if for_month:
+            if int(date_range[0]) not in range(1, 13) or int(date_range[1]) not in range(1, 13):
+                raise Exception("Month number must be between 1 and 12.")
+
+        else:
+            if int(date_range[0]) < 1980 or int(date_range[1]) < 1980:
                 raise Exception("Year must be valid.")
 
         if is_weekend_included not in ["true", "false"]:
             raise Exception("Last value can either be *true* or *false*.")
-        response["value"] = month_year_number
+
+        response["value"] = date_range
         response["message"] = "success"
         response["is_weekend_included"] = is_weekend_included == "true"
         return response, True
@@ -285,6 +301,7 @@ def base_get_absent_handler(command, for_month=True):
         mssg = str(e)
 
     response["message"] = mssg
+    print(response)
     return response, False
 
 
@@ -465,7 +482,7 @@ def get_sql_for_year_month(for_month, is_weekend_included):
                 CROSS JOIN LATERAL (
                     SELECT * FROM generate_series(el.leave_start_date, el.leave_end_date - interval '1 day', INTERVAL '1 day') s
                 ) days        
-                WHERE EXTRACT('MONTH' FROM days.s) = %s
+                WHERE EXTRACT('MONTH' FROM days.s) BETWEEN %s AND %s 
             """
 
         if is_weekend_included:
@@ -481,7 +498,7 @@ def get_sql_for_year_month(for_month, is_weekend_included):
                     CROSS JOIN LATERAL (
                         SELECT * FROM generate_series(el.leave_start_date, el.leave_end_date - interval '1 day', INTERVAL '1 day') s
                     ) days        
-                    WHERE EXTRACT('YEAR' FROM days.s) = %s
+                    WHERE EXTRACT('YEAR' FROM days.s) BETWEEN %s AND %s
                 """
 
         if is_weekend_included:
@@ -489,6 +506,7 @@ def get_sql_for_year_month(for_month, is_weekend_included):
         else:
             sql += " AND EXTRACT('ISODOW' FROM days.s) < 6 GROUP BY 1, 2 ORDER BY d DESC;"
     return sql
+
 
 
 def base_command_absent_by_month_year(say, command, for_month=True, **kwargs):
@@ -508,7 +526,7 @@ def base_command_absent_by_month_year(say, command, for_month=True, **kwargs):
     print(command)
 
     date_text = kwargs["text"]
-    date_number = kwargs["number"] 
+    date_range = kwargs["number"] 
     command_args_const = kwargs["constant"]
 
     if command_text:
@@ -526,7 +544,7 @@ def base_command_absent_by_month_year(say, command, for_month=True, **kwargs):
             mssg = data.get("message")
 
             if is_valid:
-                date_number = data.get("value")
+                date_range = data.get("value")
                 is_weekend_included = data.get("is_weekend_included")
 
         except KeyError:
@@ -539,7 +557,7 @@ def base_command_absent_by_month_year(say, command, for_month=True, **kwargs):
 
     sql = get_sql_for_year_month(for_month, is_weekend_included)
     
-    cursor.execute(sql, (date_number,))
+    cursor.execute(sql, date_range)
 
     users_tuple_list = cursor.fetchall()
 
@@ -555,29 +573,24 @@ def base_command_absent_by_month_year(say, command, for_month=True, **kwargs):
                     "text": {
                         "text": title_txt,
                         "type": "mrkdwn"
-                    },
-                    "fields": [
-                        {
-                            "type": "mrkdwn",
-                            "text": "*Name*"
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": "*Leave Days*"
-                        },
-                    ]
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"""``` {'-'*40:^40} {'-'*15:^15} {'-'*15:^15}\n|{'NAME':^40}|{date_text.upper():^15}|{'LEAVE DAYS':^15}|\n {'='*40:^40} {'='*15:^15} {'='*15:^15} \n"""
+                    }
                 }
             ]
         }
+
         print(users_tuple_list)
         for user in users_tuple_list:
-            for i in [0, 2]:
-                col_dict = {
-                    "type": "plain_text"
-                }
-                col_dict["text"] = str(user[i])
-                mssg["blocks"][0]["fields"].append(col_dict)
+            my_string = f"""|{user[0]:^40}|{int(user[1]):^15}|{user[2]:^15}|\n {'-'*40:^40} {'-'*15:^15} {'-'*15:^15} \n"""
+            mssg["blocks"][1]["text"]["text"] += my_string
 
+        mssg["blocks"][1]["text"]["text"] += "```"
         say(**mssg)
 
 
@@ -744,10 +757,11 @@ def command_absent_today(ack, say):
 @app.command("/out-month")
 def command_absent_month(ack, say, command):
     ack()
+    month_number = datetime.datetime.today().month
 
     kwargs = {
         "text": "month",
-        "number": datetime.datetime.today().month,
+        "number": [month_number, month_number] ,
         "constant": COMMAND_ABSENT_BY_MONTH_ARGS,
     }
 
@@ -757,10 +771,11 @@ def command_absent_month(ack, say, command):
 @app.command("/out-year")
 def command_absent_year(ack, say, command):
     ack()
+    year_number = datetime.datetime.today().year
 
     kwargs = {
         "text": "year",
-        "number": datetime.datetime.today().year,
+        "number": [year_number, year_number],
         "constant": COMMAND_ABSENT_BY_YEAR_ARGS,
     }
 

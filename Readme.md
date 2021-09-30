@@ -18,9 +18,11 @@ Events till now:
 * `/out-month`:- Gets all member who are absent by month.
     * `/out-month` - > All members absent in current month
     * `/out-month -m n` where n is *number of month* -> All members absent by specific month
+    * `/out-month -m [m, n]` where m and n is *number of month* -> Data between *m* and *n* (including *both*)
     * `/out-month -m n false`-> All members absent by specific month, _false_ represent include weekends or not
 * `/out-year`:- Gets all member who are absent by year.
     * `/out-year` - > All members absent in current year
     * `/out-year -y n` where n is *number of year* -> All members absent by specific year
+    * `/out-year -y [m, n]` where m and n is *number of year* -> Data between *m* and *n* (including *both*)
     * `/out-year -y n false`-> All members absent by specific year, _false_ represent include weekends or not
 
