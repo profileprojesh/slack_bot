@@ -91,3 +91,4 @@ if __name__ =="__main__":
     create_question_table()
     create_daily_survey_table()
     insert_question()
+    create_leave_table()

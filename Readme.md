@@ -1,13 +1,34 @@
-# Installation
+# 1. Installation
 ```
 # venv
 python -m venv .venv
 
 # package
 pip install -r requirements.txt
+
+# Prepare db tables
+cd database
+python create_table.py
+
+# Run
+python app.py
 ```
 
-# Feature
+### 1.1 Scopes
+
+##### Bot Token Scopes
+* channels:history
+* channels:read
+* chat:write
+* commands
+* im:history
+
+##### Bot Events Scopes
+
+* message.channels
+* message.im
+
+# 2. Feature
 Events till now:
 * `hello` :- Message that will ask for general question
 * `/out`:- Command to work with recording absent data. Commands available:
@@ -25,4 +46,5 @@ Events till now:
     * `/out-year -y n` where n is *number of year* -> All members absent by specific year
     * `/out-year -y [m, n]` where m and n is *number of year* -> Data between *m* and *n* (including *both*)
     * `/out-year -y n false`-> All members absent by specific year, _false_ represent include weekends or not
+
 
