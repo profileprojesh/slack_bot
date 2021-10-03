@@ -3,6 +3,8 @@ import shlex
 from slack_bolt import App
 from pathlib import Path
 from dotenv import load_dotenv
+from flask import Flask, request
+from slack_bolt.adapter.flask import SlackRequestHandler
 
 import re
 import ast
@@ -782,5 +784,15 @@ def command_absent_year(ack, say, command):
     base_command_absent_by_month_year(say=say, command=command, for_month=False, **kwargs)
 
 
+flask_app = Flask(__name__)
+slack_request_handler = SlackRequestHandler(app)
+
+@flask_app.route("/slack/events", methods=["POST"])
+def slack_events():
+    return slack_request_handler.handle(request)
+
 if __name__ == "__main__":
-    app.start(port=int(os.environ.get("PORT", 5000)))
+    flask_app.run(
+        host=os.getenv("HOST"),
+        port=int(os.getenv("PORT"))
+    )
