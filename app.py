@@ -793,6 +793,6 @@ def slack_events():
 
 if __name__ == "__main__":
     flask_app.run(
-        host=os.getenv("HOST"),
-        port=int(os.getenv("PORT"))
+        host=os.getenv("HOST", "127.0.0.1"),
+        port=int(os.getenv("PORT", 5000))
     )
