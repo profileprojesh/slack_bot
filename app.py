@@ -70,7 +70,6 @@ def get_question_blocks(questions):
 def message_hello(message, say):
     cursor.execute("SELECT * FROM question")
     questions = cursor.fetchall()
-    print(questions)
 
     blocks = get_question_blocks(questions)
 
@@ -88,7 +87,6 @@ def message_hello(message, say):
                 ]
             }
     blocks.append(submit_dict)
-    print(blocks)
     say(
         blocks=blocks,
         text=f"Save your response <@{message['user']}>!"
@@ -117,7 +115,6 @@ def save_survey_response(ack, respond):
 
     list = convert_stored_response_to_tuple_list(answers)
 
-    print("list", list)
     if list is None or len(list)<2:
         respond(f"Please select the suitable answers")
     else:
@@ -126,7 +123,6 @@ def save_survey_response(ack, respond):
 
         x = cursor.executemany(query, list)
         db.commit()
-        print("many execute", x)
         respond(f"Survey Saved")
 
 
@@ -134,24 +130,14 @@ def save_survey_response(ack, respond):
 def store_radio_click(ack, action, body):
     ack()
 
-    for i in body.get("message").get("blocks"):
-        print(f'section: {i}')
-
-    print(f'action {action}')
-    print("Inside response handling section")
-
     question_id = action.get('block_id')
 
     selected_option = action.get('selected_option')
-    print(f'selected_option {selected_option}')
     value = selected_option.get('text').get('text')
-    print(f'value {value}')
 
     user = body.get('user')
 
-    print(f'user {user}')
     user_id = user.get('name')
-    print(f'user_id {user_id}')
 
     if user_id in answers:
         answers[user_id][question_id] = value
@@ -159,7 +145,6 @@ def store_radio_click(ack, action, body):
         answers[user_id] = {}
         answers[user_id][question_id] = value
 
-    print(f'answers: {answers}')
 
 
 """
@@ -181,23 +166,17 @@ def command_by_day_handler(command):
       days = str, Days passed as a parameter in command
       user_id = str, Requested user id
     """
-    print("inside command by day hander func")
     mssg = "You have entered incorrect command. Try: `/out` to add manually."
-    print(f'command {command}')
     user_id = command.get("user_name")
 
     command_args = shlex.split(command.get("text")) 
-    print(f'command_args: {command_args}')
 
     try:
         if len(command_args) > 3:
-            print("inside index error if block")
             raise IndexError
 
         days = command_args[1]
         absent_text = len(command_args) == 3 and command_args[2] or None
-        print(f'absent_text is {absent_text}')
-        print(f'days: {days}')
 
         days = int(days)
         start_date = datetime.date.today()
@@ -209,7 +188,6 @@ def command_by_day_handler(command):
         errors = validate_absent_data(start_format, end_format)
 
         if len(errors) > 0:
-            print("Inisde lenght block")
             mssg = "Please correct your values:\n"
             error_list = [''.join(value) for key, value in errors.items()]
             new_mssg = mssg + "> {}".format("\n".join(error_list))
@@ -228,7 +206,6 @@ def command_by_day_handler(command):
     except IndexError:
         mssg = f"You have to pass two values: *day* and *leave_text*. Example: `/out -d 1 \"I am travelling.\"`"
 
-    print("retuned some value")
     return mssg, False
 
 
@@ -273,7 +250,6 @@ def base_get_absent_handler(command, for_month=True):
             month_year_number = int(month_year_number)
             date_range = [month_year_number, month_year_number]
 
-        print("DATE RANGE: "+str(date_range))
 
         if int(date_range[0]) > int(date_range[1]):
             raise Exception("List first element must be less than later one.")
@@ -303,7 +279,6 @@ def base_get_absent_handler(command, for_month=True):
         mssg = str(e)
 
     response["message"] = mssg
-    print(response)
     return response, False
 
 
@@ -329,7 +304,6 @@ COMMAND_ABSENT_BY_YEAR_ARGS = {
 }
 
 def get_command_absent_view(start_date=None, end_date=None):
-    print("Inside absent view")
     start_date = start_date or datetime.date.today()
     end_date = end_date or (start_date + datetime.timedelta(days=1))
     
@@ -425,23 +399,16 @@ def save_absent(client, user_id, username, logger):
     """
     msg = ""
     try:
-        print(f'client {client}')
         list = convert_stored_response_to_tuple_list(command_absent_answers, for_leave=True)
-        print("list", list)
         start_date = list[1]
         end_date = list[2]
         start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
         end_date = datetime.datetime.strptime(end_date, "%Y-%m-%d")
-        print(start_date)
         days = (end_date-start_date).days
-        print(f'days {days}')
         list.append(days)
-        print(f"DAYS: {days}")
-        print(f'list {list}')
         channels = [user_id, ]
         if CHANNEL_ID:
             channels.append(CHANNEL_ID)
-        print(f"channels {channels}")
 
         # Save to db
         query = """INSERT INTO employee_leave (user_id,leave_start_date,leave_end_date,remarks,leave_days)
@@ -454,15 +421,12 @@ def save_absent(client, user_id, username, logger):
                 RETURNING id;"""
 
         cursor.execute(query, list)
-        print(f'cursor {cursor}')
         db.commit()
-        print(command_absent_answers)
         msg = f"{username} is in leave from {list[1]} to {list[2]}"
         for ch in channels:
             client.chat_postMessage(channel=ch, text=msg)
 
     except Exception as e:
-        print(e)
         msg = "There was an error."
         logger.exception(f"Failed to post a message {e}")
         
@@ -524,8 +488,6 @@ def base_command_absent_by_month_year(say, command, for_month=True, **kwargs):
     command_text = command.get("text")
     is_weekend_included = True
 
-    print(kwargs)
-    print(command)
 
     date_text = kwargs["text"]
     date_range = kwargs["number"] 
@@ -587,7 +549,6 @@ def base_command_absent_by_month_year(say, command, for_month=True, **kwargs):
             ]
         }
 
-        print(users_tuple_list)
         for user in users_tuple_list:
             my_string = f"""|{user[0]:^40}|{int(user[1]):^15}|{user[2]:^15}|\n {'-'*40:^40} {'-'*15:^15} {'-'*15:^15} \n"""
             mssg["blocks"][1]["text"]["text"] += my_string
@@ -620,37 +581,27 @@ Below are all slack bolt listeners
 def command_absent(ack, say, command, client, body):
     ack()
     command_text = command.get("text")
-    print(f'body {body}')
     user_id = body.get('user_name')
     cursor.execute("SELECT * FROM employee_leave where user_id = %s ORDER BY leave_start_date desc;",(user_id,))
     x = cursor.fetchall()
     if x:
-        print(f'The query is {x}')
         start_date = x[0][2]
-        print(f'start_date: {start_date}')
         end_date = x[0][3]
         is_able=check_employee_leave_validity(start_date, end_date)
-        print(f'is_able {is_able}')
         if not is_able:
-            say("Oops!! You are currently in leave and cannot take leave")
+            formated_date = datetime.datetime.strftime(end_date, "%Y-%m-%d")
+            say(f"Oops!! You are currently in leave till {formated_date}.")
             return
-    print(x)
-    print("printing the query")
     # db.commit()
 
     if command_text:
-        print("Inside command text")
         mssg = "You have entered incorrect command. Try: `/out` to add manually."
         command_args = shlex.split(command_text) 
         command_key = command_args[0]
-        print(f'command: {command}')
 
         try:
             func = COMMAND_ABSENT_ARGS[command_key]
-            print(func)
             mssg, is_valid = func(command)
-            print('returned value')
-            print(mssg, is_valid)
 
             if is_valid:
                 say(
@@ -681,13 +632,10 @@ def command_absent(ack, say, command, client, body):
                 say(mssg)
 
         except KeyError:
-            print("inside key error")
             available_texts = ", ".join([''.join(key) for key, value in COMMAND_ABSENT_ARGS.items()])
-            print(available_texts)
             mssg = f"Incorrect command parameter: `{command_text}`, available are: `{available_texts}`"
             say(mssg)
         except Exception:
-            print("inside exception")
             say(mssg)
 
     else:
@@ -708,11 +656,8 @@ def save_leave_response(ack, body, client, logger):
 
 @app.view("absent_view")
 def handle_absent_modal_submission(ack, body, client, view, logger):
-    print("Inside absent modal submit")
-    print(f'body: {body}')
     username = body.get("user").get("username") 
     user_id = body.get("user").get("id")
-    print(f'username: {username}')
 
     data = view["state"]["values"]
 
@@ -723,7 +668,6 @@ def handle_absent_modal_submission(ack, body, client, view, logger):
     errors = validate_absent_data(absent_start_date, absent_end_date, absent_text)
 
     if len(errors) > 0:
-        print(f'errors {errors}')
         ack(response_action="errors", errors=errors)
         return
 
@@ -793,6 +737,5 @@ def slack_events():
 
 if __name__ == "__main__":
     flask_app.run(
-        host=os.getenv("HOST"),
         port=int(os.getenv("PORT", 5000))
     )
