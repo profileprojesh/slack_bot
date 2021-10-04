@@ -125,6 +125,11 @@ def save_survey_response(ack, respond):
         db.commit()
         respond(f"Survey Saved")
 
+@app.event("message")
+def handle_message_events(body, logger):
+    # Handles message events, e.g: message changed
+    # If not, unhandled request shown
+    logger.info(body)
 
 @app.action(re.compile('radio_buttons-(fine|action)'))
 def store_radio_click(ack, action, body):

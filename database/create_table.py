@@ -1,6 +1,6 @@
 import json
 import psycopg2
-from db import Db
+from database.db import Db
 
 db = Db()
 cur = db.connect()
@@ -15,7 +15,7 @@ def create_daily_survey_table():
             question_id SERIAL NOT NULL,
             answer VARCHAR(50) NOT NULL,
             answered_datetime TIMESTAMP DEFAULT current_timestamp,
-            CONSTRAINT fk_question FOREIGN KEY(question_id) REFERENCES question(id)
+            CONSTRAINT fk_question FOREIGN KEY(question_id) REFERENCES question(id) ON DELETE CASCADE
         );
         """
         
@@ -58,7 +58,7 @@ def create_question_table():
             text VARCHAR(255) UNIQUE NOT NULL,
             type VARCHAR(50) NOT NULL,
             action_id VARCHAR(50) NOT NULL,
-            option JSON NOT NULL
+            option JSON
         );
         """
     try:
